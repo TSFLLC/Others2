@@ -1,0 +1,54 @@
+/*    ==Scripting Parameters==
+
+    Source Server Version : SQL Server 2016 (13.0.4001)
+    Source Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Source Database Engine Type : Standalone SQL Server
+
+    Target Server Version : SQL Server 2016
+    Target Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Target Database Engine Type : Standalone SQL Server
+*/
+
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[DBA_MonitorReplicationTables_GetMaxTimes]    Script Date: 3/4/2024 1:29:58 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+create proc [dbo].[DBA_MonitorReplicationTables_GetMaxTimes] as
+BEGIN
+
+--create table FLX_DBA..DBA_MonitorReplicationTables
+--( ServerName varchar(200),
+--DatabaseName varchar(200),
+--TableName varchar(200),
+--ColumnName varchar(200),
+--MaxTime datetime)
+
+Truncate table [FLX_DBA].[dbo].[DBA_MonitorReplicationTables]
+
+INSERT INTO [FLX_DBA].[dbo].[DBA_MonitorReplicationTables]
+           ([ServerName]
+           ,[DatabaseName]
+           ,[TableName]
+           ,[ColumnName]
+           ,[MaxTime])
+           
+select @@servername, 'FLXTKT','Transactions','TxTime',MAX(txtime) from FLXTKT..Transactions
+union
+select @@servername, 'FLXEMD','Transactions','TxTime',MAX(txtime) from FLXEMD..Transactions
+union
+select @@servername, 'FLXEMDStock','TicketStock','SystemCreationDate',MAX(systemcreationdate) from FLXEMDStock..TicketStock
+union
+select @@servername, 'FLXTKTStock','TicketStock','SystemCreationDate',MAX(systemcreationdate) from FLXTKTStock..TicketStock
+
+--  select * from [FLX_DBA].[dbo].[DBA_MonitorReplicationTables]
+
+END
+GO
+
+

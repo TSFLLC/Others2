@@ -1,0 +1,124 @@
+/*    ==Scripting Parameters==
+
+    Source Server Version : SQL Server 2016 (13.0.4001)
+    Source Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Source Database Engine Type : Standalone SQL Server
+
+    Target Server Version : SQL Server 2016
+    Target Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Target Database Engine Type : Standalone SQL Server
+*/
+
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[DBA_Monitor_Full_Backup]    Script Date: 3/4/2024 11:50:00 AM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+CREATE PROC [dbo].[DBA_Monitor_Full_Backup]
+AS
+ --  Created By:  JC 
+ --  This procedure lists the databases which are not backup by the SQL Server 
+
+DECLARE @Missed_Backup TABLE
+    (
+      [Name] [nvarchar](128) NULL 
+    )
+    
+DECLARE @Sub VARCHAR(500)
+DECLARE @servername VARCHAR(30)
+DECLARE @Message VARCHAR(8000)
+DECLARE @oper_email NVARCHAR(200)
+ 
+SET NOCOUNT ON
+
+SET @oper_email = ( SELECT  email_address
+					FROM    msdb.dbo.sysoperators where name = 'DBA_Operator'
+          )
+
+SET @servername = @@servername
+
+SELECT distinct database_name ,
+        backup_start_date ,
+        media_set_id
+INTO    #mytemp
+FROM    msdb..backupfile a
+        INNER JOIN msdb..backupset b ON a.backup_set_id = b.backup_set_id
+WHERE  backup_start_date > DATEADD(DAY, DATEDIFF(DAY, -1, GETDATE()) / 7 * 7, -2) 
+        AND type = 'D'
+ 
+
+SELECT 
+		DISTINCT
+        database_name ,
+        backup_start_date ,
+        physical_device_name
+INTO    #mytemp2
+FROM    #mytemp d
+        INNER JOIN msdb..backupmediafamily c ON c.media_set_id = d.media_set_id
+
+--update #mytemp2
+--set physical_device_name = REPLACE(physical_device_name,'\\','\')
+
+
+SELECT  @@servername AS ServerName ,
+        a.name Name ,
+        e.database_name DatabaseName ,
+        e.backup_start_date StartDate ,
+        e.physical_device_name PhysicalDeviceName
+INTO    #myTemp3
+FROM    master..sysdatabases a
+        LEFT OUTER JOIN #mytemp2 e ON name = database_name
+WHERE   database_name IS NULL
+        AND A.NAME NOT IN ( 'model', 'tempdb', 'distribution' )
+ORDER BY name
+
+IF exists(select top 1 * from #myTemp3) or exists(select database_name from #mytemp2 where dbo.fn_FileExists(physical_device_name) = 0)
+    BEGIN
+
+IF exists (select top 1 * from #myTemp3)
+ INSERT  INTO @MISSED_Backup
+                SELECT  LTRIM(RTRIM(a.Name)) AS Name 
+                FROM    #mytemp3 a
+                        INNER JOIN master..sysdatabases b ON a.Name = b.name
+                        
+IF exists(select database_name from #mytemp2 where dbo.fn_FileExists(physical_device_name) = 0)
+ INSERT  INTO @MISSED_Backup
+	select database_name from #mytemp2 where dbo.fn_FileExists(physical_device_name) = 0
+
+
+        SET @Message = '<html><table border="1">'
+
+        SELECT  @Message = @Message + '<tr><td>' + name + '</td></tr>'
+        FROM    @MISSED_Backup
+
+        SET @Message = @Message + '</table></html>'
+
+        SET @SUB = @@servername
+            + ':  Missing Full Backups:  The Following DBs are Not Backup Last Sunday or Backup Files are Missing.  Please Check.'
+		-- send email 
+        EXEC msdb.dbo.sp_send_dbmail @recipients = @oper_email,   -- 
+            @body = @Message, @body_format = 'html', @subject = @sub
+
+    END
+
+
+
+DROP TABLE #mytemp
+DROP TABLE #mytemp2
+DROP TABLE #myTemp3
+
+
+
+
+
+GO
+

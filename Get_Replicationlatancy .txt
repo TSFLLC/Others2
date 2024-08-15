@@ -1,0 +1,89 @@
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[DBA_GET_ReplicationLatency]    Script Date: 5/13/2024 10:17:44 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+CREATE PROCEDURE [dbo].[DBA_GET_ReplicationLatency]  
+
+AS 
+
+/* ----------------------------------------------------------------
+Exec sp_replcounters
+--This procedure provides latency between publisher and distributor
+--Database - publisher database
+--Replicated transactions - Number of transactions in the log awaiting delivery to the distribution database
+--Replication rate trans/sec - Average number of transactions per second delivered to the distribution database
+--Replication latency - Average time, in seconds, that transactions were in the log before being distributed
+--Replbeginlsn - Log sequence number (LSN) of the current truncation point in the log
+--Replendlsn - LSN of the next commit record awaiting delivery to the distribution database
+*/ ----------------------------------------------------------------
+
+SET NOCOUNT ON
+DECLARE @ServerName NVARCHAR(256)
+DECLARE @SQLServerName VARCHAR(256)
+DECLARE @Subject NVARCHAR(256)
+
+SET @ServerName = CONVERT(SYSNAME,SERVERPROPERTY('MachineName') )
+SET @SQLServerName = @@SERVERNAME
+
+			create table #replcounters
+			([DatabaseName] Varchar(250),
+			[Replicated_transactions] int,
+			[Replication_rate_transpersec] decimal(10,2),
+			[replication_latency_sec] decimal(10,2),
+			Replbeginlsn binary(10),
+			Replnextlsn binary(10));
+
+			INSERT INTO #replcounters
+			EXEC sp_replcounters;
+
+			SELECT [DatabaseName] ,
+			[Replicated_transactions] ,
+			[Replication_rate_transpersec] ,
+			[replication_latency_sec]  INTO #temp
+			FROM #replcounters as t where [replication_latency_sec] > 3600
+
+
+IF @@ROWCOUNT <> 0
+
+Begin  
+DECLARE @xml NVARCHAR(MAX)  
+DECLARE @body NVARCHAR(MAX)  
+   
+ SET @xml = CAST(( SELECT  DatabaseName AS 'td','',  Replicated_transactions AS 'td','',Replication_rate_transpersec AS 'td',''
+ ,replication_latency_sec AS 'td','' FROM  #temp  
+FOR XML PATH('tr'), ELEMENTS ) AS NVARCHAR(MAX))  
+  
+SET @body ='<html><body><H3>Replication Latency Between Publisher and Distributor</H3>  
+   <table border = 1>   
+   <tr BGCOLOR="#99CCFF">  
+   <th> DatabaseName </th><th> Replicated_transactions </th><th> Replication_rate_transpersec</th><th> replication_latency_sec </th>
+   
+  </tr>'      
+     
+SET @body = @body + @xml +'</table></body></html>'  
+
+SET @subject = 'Replication Latency on ' + @SQLServerName
+  
+EXEC msdb.dbo.sp_send_dbmail  
+   @profile_name ='FLX_DBA_Mail' ,   -- replace with your SQL Database Mail Profile   
+   @body = @body,  
+   @body_format ='HTML',  
+   @recipients = 'fits-dba@accelya.com', -- replace with your email address  
+   @subject = @subject; --'Replication Latency on DB3016' ;  
+  
+END  
+
+drop table #replcounters;
+-- End of proc
+
+
+
+GO
+

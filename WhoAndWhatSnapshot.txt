@@ -1,0 +1,71 @@
+/*    ==Scripting Parameters==
+
+    Source Server Version : SQL Server 2016 (13.0.4001)
+    Source Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Source Database Engine Type : Standalone SQL Server
+
+    Target Server Version : SQL Server 2016
+    Target Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Target Database Engine Type : Standalone SQL Server
+*/
+
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[FLX_WhoAndWhatSnapshot]    Script Date: 3/4/2024 1:26:05 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+/*          
+ Author: IR          
+ Created: 2009-09-22          
+ Description: Shows a snapshot of the current active requests          
+*/          
+CREATE procedure [dbo].[FLX_WhoAndWhatSnapshot]  
+as   
+  
+begin          
+          
+ select  
+  case   
+   when Requests.sql_handle is null then ''  
+   else substring(Statements.text, (Requests.statement_start_offset + 2) / 2, (case when Requests.statement_end_offset = -1   
+                   then len(convert(varchar(max), Statements.text)) * 2  
+   else Requests.statement_end_offset  
+   end - Requests.statement_start_offset) / 2)
+  end as StatementText,  
+  Statements.text as BatchText,  
+  QueryPlans.query_plan as QueryPlan,  
+  Sessions.session_id as SessionID,  
+  Sessions.login_name as LoginName,  
+  Sessions.host_name as HostName,  
+  Sessions.program_name as ProgramName,  
+  Sessions.client_interface_name as ClientInterfaceName,  
+  db.[name] as DatabaseName,  
+  Requests.wait_time as WaitTime,  
+  Requests.cpu_time as CPUTime,  
+  Requests.total_elapsed_time as ElapsedTime,  
+  Requests.reads as Reads,  
+  Requests.writes as Writes,  
+  Requests.logical_reads as LogicalReads,  
+  Requests.row_count as [RowCount],  
+  Requests.granted_query_memory * 8 as GrantedQueryMemoryKB,  
+  (Requests.cpu_time + 1) * (Requests.reads + Requests.writes + 1) as Score,  
+  len(Statements.text) as BatchTextLength,  
+  Requests.statement_start_offset / 2 as StartPos,  
+  Requests.statement_end_offset / 2 as EndPos  
+ from sys.dm_exec_sessions as Sessions  
+ inner join sys.dm_exec_requests as Requests  
+  on Sessions.session_id = Requests.session_id  
+ inner join sys.databases db  
+  on db.database_id = Requests.database_id  
+ cross apply sys.dm_exec_sql_text(sql_handle) as Statements  
+ cross apply sys.dm_exec_query_plan(plan_handle) as QueryPlans  
+ --where is_user_process = 1
+ order by score desc  
+  
+end  
+GO

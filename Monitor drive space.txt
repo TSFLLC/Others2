@@ -1,0 +1,118 @@
+/****** Object:  StoredProcedure [dbo].[DBA_Monitor_DiskFreeSpace]    Script Date: 3/4/2024 1:28:10 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+--  JC	06/22/2016
+--  This procedure sends out an alert message when hard disk space is below 15% of Total disk space. 
+--  If any of the drives has less than 15%, then an alert email will be sent to the dba team.
+--  Modified code from https://www.mssqltips.com/sqlservertip/3037/getting-more-details-with-an-enhanced-xpfixeddrives-for-sql-server/
+
+
+CREATE PROCEDURE [dbo].[DBA_Monitor_DiskFreeSpace]
+AS
+
+BEGIN
+
+
+SET NOCOUNT ON
+
+DECLARE @SQL NVARCHAR(1000)
+
+CREATE TABLE #DrvLetter (
+    Drive VARCHAR(500),
+    )
+CREATE TABLE DrvInfo (
+    Drive VARCHAR(10) null,
+    [MB free] DECIMAL(20,2),
+    [MB TotalSize] DECIMAL(20,2),
+    [Volume Name] VARCHAR(30)
+    ,    [FreeSpacePct] DECIMAL(20,2)
+    )
+
+
+INSERT INTO #DrvLetter
+EXEC xp_cmdshell 'wmic volume where drivetype="3" get caption, freespace, capacity, label'
+
+DELETE
+FROM #DrvLetter
+WHERE drive IS NULL OR len(drive) < 4 OR Drive LIKE '%Capacity%'
+	OR Drive LIKE  '%\\%\Volume%'
+
+
+DECLARE @STRLine VARCHAR(8000)
+DECLARE @Drive varchar(500)
+DECLARE @TotalSize REAL
+DECLARE @Freesize REAL
+DECLARE @VolumeName VARCHAR(64)
+DECLARE @MSG varchar(500)
+
+
+WHILE EXISTS(SELECT 1 FROM #DrvLetter)
+BEGIN
+SET ROWCOUNT 1
+SELECT @STRLine = drive FROM #DrvLetter
+
+-- Get TotalSize
+SET @TotalSize= CAST(LEFT(@STRLine,CHARINDEX(' ',@STRLine)) AS REAL)/1024/1024
+--SELECT @TotalSize
+
+-- Remove Total Size
+SET @STRLine = REPLACE(@STRLine, LEFT(@STRLine,CHARINDEX(' ',@STRLine)),'')
+-- Get Drive
+
+SET @Drive = LEFT(LTRIM(@STRLine),CHARINDEX(' ',LTRIM(@STRLine)))
+--SELECT @Drive
+
+SET @STRLine = RTRIM(LTRIM(REPLACE(LTRIM(@STRLine), LEFT(LTRIM(@STRLine),CHARINDEX(' ',LTRIM(@STRLine))),'')))
+
+SET @Freesize = LEFT(LTRIM(@STRLine),CHARINDEX(' ',LTRIM(@STRLine)))
+--SELECT @Freesize/1024/1024
+
+SET @STRLine = RTRIM(LTRIM(REPLACE(LTRIM(@STRLine), LEFT(LTRIM(@STRLine),CHARINDEX(' ',LTRIM(@STRLine))),'')))
+SET @VolumeName = @STRLine
+
+
+INSERT INTO DrvInfo( Drive,[MB free],[MB TotalSize],[Volume Name] )
+SELECT @Drive, @Freesize/1024/1024 , @TotalSize, @VolumeName
+
+DELETE FROM #DrvLetter
+END
+
+SET ROWCOUNT 0
+
+--select * from DrvInfo
+
+UPDATE DrvInfo
+SET FreeSpacePct = (100/[MB TotalSize]) * [MB free]
+
+select * from DrvInfo
+
+IF EXISTS ( SELECT 1 FROM DrvInfo WHERE FreeSpacePct < 15)
+BEGIN
+
+SET @Drive = ( SELECT TOP 1 Drive FROM DrvInfo WHERE FreeSpacePct < 15 )
+SET @MSG = 'DRIVE ' + @DRIVE + ' HAS LESS THAN 15% OF FREE SPACE.  PLEASE SEE ATTACHED.  '
+
+EXEC msdb.dbo.sp_send_dbmail  
+	  
+	@recipients='fits-dba@accelya.com',    
+	@subject = 'DISK SPACE ALERT'  ,    
+	@BODY = @MSG,
+	@query = N'SET NOCOUNT ON; SELECT * FROM flx_dba..DrvInfo',
+	@attach_query_result_as_file = 1,
+	@query_attachment_filename = 'Disk Space Detail.txt'
+ end   
+
+
+DROP TABLE #DrvLetter
+DROP TABLE DrvInfo
+
+END
+
+GO
+

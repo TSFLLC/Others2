@@ -1,0 +1,156 @@
+/*    ==Scripting Parameters==
+
+    Source Server Version : SQL Server 2016 (13.0.4001)
+    Source Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Source Database Engine Type : Standalone SQL Server
+
+    Target Server Version : SQL Server 2016
+    Target Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Target Database Engine Type : Standalone SQL Server
+*/
+
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[DBA_Monitor_Log_Backup]    Script Date: 3/4/2024 1:25:11 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+CREATE PROC [dbo].[DBA_Monitor_Log_Backup]
+AS
+ --  Created By:  JC 
+ --  This procedure lists the databases which no txn log backups in the last 10 mins
+
+DECLARE @Missed_Backup TABLE
+    (
+      [Name] [NVARCHAR](128) NULL
+    );
+
+DECLARE @Sub VARCHAR(500);
+DECLARE @servername VARCHAR(30);
+DECLARE @Message VARCHAR(8000);
+DECLARE @oper_email NVARCHAR(200);
+ 
+SET NOCOUNT ON;
+
+SET @servername = @@servername;
+
+SET @oper_email = ( SELECT  email_address
+                    FROM    msdb.dbo.sysoperators
+                    WHERE   name = 'DBA_Operator'
+                  );
+WITH    b AS ( SELECT   database_name ,
+                        MAX(backup_start_date) AS Max_backup_start_date
+               FROM     msdb..backupset
+               WHERE    backup_start_date > CONVERT(DATE, GETDATE())
+                        AND type = 'L'
+               GROUP BY database_name
+             )
+    SELECT  a.database_name ,
+            backup_start_date ,
+            backup_set_id ,
+            media_set_id
+    INTO    #mytemp
+    FROM    msdb..backupset a
+            INNER JOIN b ON a.database_name = b.database_name
+                            AND a.backup_start_date = b.Max_backup_start_date;
+        
+
+SELECT 
+		DISTINCT
+        database_name ,
+        backup_start_date ,
+        physical_device_name
+INTO    #mytemp2
+FROM    #mytemp d
+        INNER JOIN msdb..backupmediafamily c ON c.media_set_id = d.media_set_id;
+
+
+--UPDATE  #mytemp2
+--SET     physical_device_name = REPLACE(physical_device_name, '\\', '\');
+
+--select * from #mytemp2
+--update #mytemp2
+--set backup_start_date = '2016-08-03 08:50:06.000' where backup_start_date =  '2016-08-03 10:20:06.000'
+--select *, DATEdiff(MINUTE, backup_start_date,GETDATE()) from #mytemp2
+
+
+SELECT  @@servername AS ServerName ,
+        a.name Name ,
+        e.database_name DatabaseName ,
+        e.backup_start_date StartDate ,
+        e.physical_device_name PhysicalDeviceName
+INTO    #myTemp3
+FROM    master..sysdatabases a
+        LEFT OUTER JOIN #mytemp2 e ON name = database_name
+WHERE   database_name IS NULL
+        AND a.name NOT IN ( 'model', 'tempdb', 'master', 'msdb',
+                            'distribution', 'FLXTKT_ARCHIVE', 'FLX_DBA','FLXEMD_ARCHIVE' )
+ORDER BY Name;
+
+
+IF EXISTS ( SELECT TOP 1
+                    *
+            FROM    #myTemp3 )
+    OR EXISTS ( SELECT  database_name
+                FROM    #mytemp2
+                WHERE   dbo.fn_FileExists(physical_device_name) = 0 )
+    OR EXISTS ( SELECT TOP 1
+                        *
+                FROM    #mytemp2
+                WHERE   DATEDIFF(MINUTE, backup_start_date, GETDATE()) > 12 )
+    BEGIN
+
+        IF EXISTS ( SELECT TOP 1
+                            *
+                    FROM    #myTemp3 )
+            INSERT  INTO @Missed_Backup
+                    SELECT  LTRIM(RTRIM(a.Name)) AS Name
+                    FROM    #myTemp3 a
+                            INNER JOIN master..sysdatabases b ON a.Name = b.name;
+                        
+        IF EXISTS ( SELECT  database_name
+                    FROM    #mytemp2
+                    WHERE   dbo.fn_FileExists(physical_device_name) = 0 )
+            INSERT  INTO @Missed_Backup
+                    SELECT  database_name
+                    FROM    #mytemp2
+                    WHERE   dbo.fn_FileExists(physical_device_name) = 0;
+
+        IF EXISTS ( SELECT TOP 1
+                            *
+                    FROM    #mytemp2
+                    WHERE   DATEDIFF(MINUTE, backup_start_date, GETDATE()) > 12 )
+            INSERT  INTO @Missed_Backup
+                    SELECT  database_name
+                    FROM    #mytemp2
+                    WHERE   DATEDIFF(MINUTE, backup_start_date, GETDATE()) > 12;
+
+        SET @Message = '<html><table border="1">';
+
+        SELECT  @Message = @Message + '<tr><td>' + Name + '</td></tr>'
+        FROM    @Missed_Backup;
+
+        SET @Message = @Message + '</table></html>';
+
+        SET @Sub = @@servername
+            + ':  Missing Transaction Log Backups:  The following DBs have no Log Backup in the last 12 mins.  Please Check.';
+		
+		-- send email 
+        EXEC msdb.dbo.sp_send_dbmail @recipients = @oper_email, 
+            @body = @Message, @body_format = 'html', @subject = @Sub;
+
+    END;
+
+
+DROP TABLE #mytemp;
+DROP TABLE #mytemp2;
+DROP TABLE #myTemp3;
+GO

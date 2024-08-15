@@ -1,0 +1,107 @@
+/*    ==Scripting Parameters==
+
+    Source Server Version : SQL Server 2016 (13.0.4001)
+    Source Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Source Database Engine Type : Standalone SQL Server
+
+    Target Server Version : SQL Server 2016
+    Target Database Engine Edition : Microsoft SQL Server Enterprise Edition
+    Target Database Engine Type : Standalone SQL Server
+*/
+
+USE [FLX_DBA]
+GO
+
+/****** Object:  StoredProcedure [dbo].[DBA_Monitor_DBFiles]    Script Date: 3/4/2024 1:29:11 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+--CREATE table FLX_DBA..DBA_DBSpaceUsed 
+--(
+--DBName VARCHAR(200),
+--FileName VARCHAR(200),
+--CurrentSizeMB DECIMAL(10,2), 
+--FreeSpaceMB DECIMAL(10,2), 
+--SpaceUsed DECIMAL(10,2),
+--PercentFree DECIMAL(5,2) )
+
+CREATE PROC [dbo].[DBA_Monitor_DBFiles]
+AS
+BEGIN
+
+
+SET NOCOUNT ON
+
+DECLARE @mydate DATETIME;
+DECLARE @server VARCHAR(20);
+DECLARE @msg VARCHAR(200);
+DECLARE @oper_email NVARCHAR(200);
+
+
+TRUNCATE TABLE FLX_DBA..DBA_DBSpaceUsed; 
+
+EXECUTE master.sys.sp_MSforeachdb 'USE [?]; 
+
+INSERT  INTO FLX_DBA..DBA_DBSpaceUsed 
+SELECT DB_NAME() , 
+name , 
+size/128.0 , 
+size/128.0 - CAST(FILEPROPERTY(name, ''SpaceUsed'') AS INT)/128.0 , CAST(FILEPROPERTY(name, ''SpaceUsed'') AS INT)/128.0 ,
+0
+FROM sys.database_files; ';
+
+UPDATE  FLX_DBA..DBA_DBSpaceUsed
+SET     PercentFree = ( 100 / CurrentSizeMB ) * FreeSpaceMB;
+
+IF EXISTS ( SELECT  1
+            FROM    FLX_DBA..DBA_DBSpaceUsed
+            WHERE   ( ( FileName LIKE '%log'
+                        AND CurrentSizeMB > 1000
+                      )
+                      OR freespacemb > 1000
+                    )
+                    AND dbname NOT IN ( 'master', 'tempdb', 'model', 'msdb',
+                                        'ReportServer', 'ReportServerTempDB' ) )
+    BEGIN
+
+        SET @mydate = GETDATE();
+        SET @server = @@servername;
+
+        SET @msg = 'MSSQL Server '
+            + CONVERT(VARCHAR(100), SERVERPROPERTY('machinename'))
+            + ':  Please Check DB Files and Free Up Unused Space '; 
+
+        SET @oper_email = ( SELECT  email_address
+                            FROM    msdb.dbo.sysoperators
+                            WHERE   name = 'DBA_Operator'
+                          );
+
+        EXEC msdb.dbo.sp_send_dbmail @recipients = 'jcheng@farelogix.com'
+        --@oper_email
+            , @body = @msg, @subject = @msg,
+            @query = N'set nocount on; SELECT  DBName,FileName,CurrentSizeMB,FreeSpaceMB
+            FROM    FLX_DBA..DBA_DBSpaceUsed
+            WHERE   ( ( FileName LIKE ''%log''
+                        AND CurrentSizeMB > 1000
+                      )
+                      OR freespacemb > 1000
+                    )
+                    AND dbname NOT IN ( ''master'', ''tempdb'', ''model'', ''msdb'',
+                                        ''ReportServer'', ''ReportServerTempDB'' )',
+            @attach_query_result_as_file = 1,
+            @query_attachment_filename = 'DBFileSizes.txt',
+             @query_result_no_padding = 1;
+    END;           
+
+END
+
+--DBCC SHRINKFILE( DBFileName,100)  -- reduce to 100MB
+
+--DBCC UPDATEUSAGE(0)
+GO
+
+
