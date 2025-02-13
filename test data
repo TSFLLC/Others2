@@ -1,4 +1,16 @@
 
+10% Formal Education
+Goal: Enhance my understanding of T-SQL optimization techniques.
+Action: Attend a structured course or workshop focused on T-SQL performance tuning and optimization techniques. Look for courses that cover index management, execution plans, query tuning, and use of performance tools like SQL Server Profiler and Extended Events.
+20% Social Learning
+Goal: Gain practical insights and advanced problem-solving techniques through collaboration.
+Action: Partner with other senior database administrator and manager who excels in database optimization in my organization. 
+Measurable Outcome: Regularly discuss specific optimization problems and solutions, documenting new learning points, and receiving positive feedback on contributions.
+70% Experiential Learning
+Goal: Apply and practice optimization skills in real-world scenarios.
+Action: Undertake a project or ongoing responsibility that involves reviewing and optimizing existing T-SQL queries in my organization’s applications. Focus on projects that will allow me to analyze performance bottlenecks, refactor inefficient code, and test the impacts of your optimizations.
+
+
 "Our ongoing effort to enhance APM has led to significant progress. We're addressing past gaps, monitoring new initiatives, and making adjustments to ensure seamless integration and centralization of monitoring and management capabilities.
 
 Some specific examples of our progress include:
