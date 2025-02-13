@@ -1,4 +1,25 @@
 
+
+As part of my structured learning approach to enhancing T-SQL optimization techniques, I have taken concrete steps across formal education, social learning, and experiential learning.
+
+10% Formal Education
+I have enrolled in a structured course on T-SQL Performance Tuning that covers index management, execution plans, query tuning, and performance tools such as SQL Server Profiler and Extended Events.
+Through this course, I have gained a deeper understanding of query optimization strategies and their direct impact on database performance.
+20% Social Learning
+I have engaged with senior database administrators and managers within my organization who have extensive experience in database performance tuning.
+Regular discussions on real-world optimization challenges have provided me with practical insights and advanced problem-solving techniques.
+I have documented key learning points and received constructive feedback on my contributions.
+70% Experiential Learning
+I have actively worked on optimizing existing T-SQL queries in our organization’s applications, focusing on identifying and eliminating performance bottlenecks.
+As part of this initiative, we have successfully:
+Implemented alerts for long-running index optimization jobs, ensuring timely detection and resolution of performance issues.
+Developed a monitoring solution for data synchronization, improving real-time insights into data consistency and integrity.
+These optimizations have enhanced overall database performance, demonstrating the practical application of my learning and reinforcing a culture of continuous improvement.
+Overall, this structured approach has strengthened my T-SQL optimization expertise, improved system performance, and contributed to the efficiency and reliability of our database solutions.
+
+
+
+
 10% Formal Education
 Goal: Enhance my understanding of T-SQL optimization techniques.
 Action: Attend a structured course or workshop focused on T-SQL performance tuning and optimization techniques. Look for courses that cover index management, execution plans, query tuning, and use of performance tools like SQL Server Profiler and Extended Events.
